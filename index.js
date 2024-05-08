@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
 const app = express();
@@ -12,6 +14,22 @@ const corsOptions = {
 //middlewares
 app.use(cors(corsOptions));
 app.use(express.json());
+app.use(cookieParser());
+
+// my middlewares
+const verifyToken = (req, res, next) => {
+  const token = req.cookies?.token;
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized Access" });
+  }
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "Unauthorized Access" });
+    }
+    req.user = decoded;
+    next();
+  });
+};
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.nrdgddr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -31,6 +49,27 @@ async function run() {
     const jobCollection = client.db("soloSphere").collection("jobs");
     const bidCollection = client.db("soloSphere").collection("bids");
     // await client.connect();
+
+    // auth related api
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "1d",
+      });
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: true,
+          sameSite: "none",
+        })
+        .send({ success: true });
+    });
+
+    app.get("/logout", async (req, res) => {
+      res.clearCookie("token", { maxAge: 0 }).send({ success: true });
+    });
+
+    // CRUD API fro jobs and bids
     app.post("/jobs", async (req, res) => {
       const jobData = req.body;
       const result = await jobCollection.insertOne(jobData);
@@ -48,8 +87,11 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/jobs/:email", async (req, res) => {
+    app.get("/jobs/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
+      if (req.user.email !== email) {
+        return res.status(403).send("Forbidden Access");
+      }
       const result = await jobCollection
         .find({ "buyer.email": email })
         .toArray();
@@ -83,15 +125,21 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/bids/:email", async (req, res) => {
+    app.get("/bids/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
+      if (req.user.email !== email) {
+        return res.status(403).send("Forbidden Access");
+      }
       const query = { email };
       const result = await bidCollection.find(query).toArray();
       res.send(result);
     });
 
-    app.get("/bid-req/:email", async (req, res) => {
+    app.get("/bid-req/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
+      if (req.user.email !== email) {
+        return res.status(403).send("Forbidden Access");
+      }
       const query = { "buyer.email": email };
       const result = await bidCollection.find(query).toArray();
       res.send(result);
@@ -109,9 +157,9 @@ async function run() {
         },
       };
       const result = await bidCollection.updateOne(query, updateDoc);
-      res.send(result)
+      res.send(result);
     });
-    app.patch("/accept-bid/:id", async(req, res) => {
+    app.patch("/accept-bid/:id", async (req, res) => {
       // console.log(req.params.id, req.body)
       const id = req.params.id;
       const data = req.body;
@@ -123,8 +171,8 @@ async function run() {
         },
       };
       const result = await bidCollection.updateOne(query, updateDoc);
-      res.send(result)
-    })
+      res.send(result);
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
