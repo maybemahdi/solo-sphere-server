@@ -69,24 +69,64 @@ async function run() {
       res.clearCookie("token", { maxAge: 0 }).send({ success: true });
     });
 
+    //Api for pagination
+
+    //get products count
+    app.get("/getCount", async (req, res) => {
+      const filter = req.query.filter;
+      const search = req.query.search;
+      let query = {
+        job_title: {$regex: search, $options: 'i'}
+      };
+      if (filter) query.category = filter;
+      const count = await jobCollection.countDocuments(query);
+      res.send({ count });
+    });
+
+    //get filtered jobs for filtering and pagination
+    app.get("/all-job", async (req, res) => {
+      const page = parseFloat(req.query.page);
+      const size = parseFloat(req.query.size);
+      const filter = req.query.filter;
+      const sort = req.query.sort;
+      const search = req.query.search;
+      let query = {
+        job_title: { $regex: search, $options: "i" },
+      };
+      if (filter) query.category = filter;
+      let options = {};
+      if (sort) options = { sort: { deadline: sort === "asc" ? 1 : -1 } };
+      const result = await jobCollection
+        .find(query, options)
+        .skip(page * size)
+        .limit(size)
+        .toArray();
+      res.send(result);
+    });
+
     // CRUD API fro jobs and bids
+
+    //post job
     app.post("/jobs", async (req, res) => {
       const jobData = req.body;
       const result = await jobCollection.insertOne(jobData);
       res.send(result);
     });
 
+    //get jobs
     app.get("/jobs", async (req, res) => {
       const result = await jobCollection.find().toArray();
       res.send(result);
     });
 
+    // get single job for (details)
     app.get("/job/:id", async (req, res) => {
       const id = req.params.id;
       const result = await jobCollection.findOne({ _id: new ObjectId(id) });
       res.send(result);
     });
 
+    // get my posted jobs
     app.get("/jobs/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       if (req.user.email !== email) {
@@ -98,6 +138,7 @@ async function run() {
       res.send(result);
     });
 
+    // delete a job
     app.delete("/job/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -105,6 +146,7 @@ async function run() {
       res.send(result);
     });
 
+    //update a job
     app.put("/job/:id", async (req, res) => {
       const id = req.params.id;
       const jobData = req.body;
@@ -119,12 +161,14 @@ async function run() {
       res.send(result);
     });
 
+    //post a bid req
     app.post("/bids", async (req, res) => {
       const bidData = req.body;
       const result = await bidCollection.insertOne(bidData);
       res.send(result);
     });
 
+    //get my bids
     app.get("/bids/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       if (req.user.email !== email) {
@@ -135,6 +179,7 @@ async function run() {
       res.send(result);
     });
 
+    //get requested bid on my jobs
     app.get("/bid-req/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       if (req.user.email !== email) {
@@ -145,6 +190,7 @@ async function run() {
       res.send(result);
     });
 
+    //update bid status
     app.patch("/bid-req/:id", async (req, res) => {
       // console.log(req.params.id, req.body)
       const id = req.params.id;
@@ -159,6 +205,8 @@ async function run() {
       const result = await bidCollection.updateOne(query, updateDoc);
       res.send(result);
     });
+
+    //update accepted bid status
     app.patch("/accept-bid/:id", async (req, res) => {
       // console.log(req.params.id, req.body)
       const id = req.params.id;
