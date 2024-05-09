@@ -59,8 +59,8 @@ async function run() {
       res
         .cookie("token", token, {
           httpOnly: true,
-          secure: true,
-          sameSite: "none",
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
         })
         .send({ success: true });
     });
@@ -76,7 +76,7 @@ async function run() {
       const filter = req.query.filter;
       const search = req.query.search;
       let query = {
-        job_title: {$regex: search, $options: 'i'}
+        job_title: { $regex: search, $options: "i" },
       };
       if (filter) query.category = filter;
       const count = await jobCollection.countDocuments(query);
@@ -164,6 +164,16 @@ async function run() {
     //post a bid req
     app.post("/bids", async (req, res) => {
       const bidData = req.body;
+      const query = {
+        email: bidData.email,
+        jobId: bidData.jobId,
+      };
+      const alreadyApplied = await bidCollection.findOne(query);
+      if (alreadyApplied) {
+        return res
+          .status(400)
+          .send("You have already placed a bid on this job");
+      }
       const result = await bidCollection.insertOne(bidData);
       res.send(result);
     });
@@ -190,8 +200,8 @@ async function run() {
       res.send(result);
     });
 
-    //update bid status
-    app.patch("/bid-req/:id", async (req, res) => {
+    //update accept bid status
+    app.patch("/accept-bid-req/:id", async (req, res) => {
       // console.log(req.params.id, req.body)
       const id = req.params.id;
       const data = req.body;
@@ -206,8 +216,24 @@ async function run() {
       res.send(result);
     });
 
-    //update accepted bid status
-    app.patch("/accept-bid/:id", async (req, res) => {
+    //update reject bid status
+    app.patch("/reject-bid-req/:id", async (req, res) => {
+      // console.log(req.params.id, req.body)
+      const id = req.params.id;
+      const data = req.body;
+      const updatedStatus = data.updatedStatus;
+      const query = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          status: updatedStatus,
+        },
+      };
+      const result = await bidCollection.updateOne(query, updateDoc);
+      res.send(result);
+    });
+
+    //update complete bid status
+    app.patch("/confirm-bid/:id", async (req, res) => {
       // console.log(req.params.id, req.body)
       const id = req.params.id;
       const data = req.body;
