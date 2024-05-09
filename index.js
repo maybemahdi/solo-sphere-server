@@ -7,7 +7,12 @@ const port = process.env.PORT || 5000;
 const app = express();
 
 const corsOptions = {
-  origin: ["http://localhost:5173", "http://localhost:5174"],
+  origin: [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://solo-sphere-9771a.web.app",
+    "https://solo-sphere-9771a.firebaseapp.com",
+  ],
   credentials: true,
   optionSuccessStatus: 200,
 };
